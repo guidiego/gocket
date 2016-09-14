@@ -2,47 +2,91 @@ package gocket;
 
 import (
 	"log"
+	"github.com/pborman/uuid"
 	"golang.org/x/net/websocket"
-	"github.com/chuckpreslar/emission"
 )
 
-var emitter = emission.NewEmitter()
-
-type WsTyper struct {
-	MessageType string 		 `json:"type"`
-	Data 		interface {} `json:"data"`
+type Conn struct {
+	id 		string
+	rooms 	[]string
+	ws 		*websocket.Conn
 }
 
-func webSocketServer(ws *websocket.Conn) {
-	log.Println("Connection Started!")
+type WebsocketResponse struct {
+	MessageType string 		`json:"type"`
+	Data 		interface{} `json:"data"`
+}
 
-	var response WsTyper;
-	send := func (messageType string, data interface {}) {
-		websocket.JSON.Send(ws, WsTyper{
-			MessageType: messageType,
-			Data: data,
-		})
-	}
+type Gocket struct {
+	listeners 	map[string]func(c Conn, data interface{})
+	connections []Conn
+}
+
+var gocket = Gocket{
+	listeners: map[string]func(c Conn, data interface{}){},
+	connections: []Conn{},
+}
+
+func Handler() websocket.Handler {
+	return websocket.Handler(func(ws *websocket.Conn) {
+		log.Println("Connection Started!")
+
+		var conn = Conn{
+			id: uuid.New(),
+			rooms: []string{"self"},
+			ws: ws,
+		}
+
+		gocket.listeners["Connect"](conn, nil)
+		gocket.connections = append(gocket.connections, conn)
+		messageReceive(conn)
+	})
+}
+
+func messageReceive(conn Conn) {
+	var response WebsocketResponse;
 
 	for {
-		err := websocket.JSON.Receive(ws, &response)
+		err := websocket.JSON.Receive(conn.ws, &response)
 	
 		if err != nil {
 			log.Println("Connection Closed!")
-			ws.Close()
+			log.Println(err)
+			conn.ws.Close()
 			break
 		}
 
-		emitter.Emit(response.MessageType, response.Data, send)
+		log.Println("EVENT DISPATCHED: ", response.MessageType)
+		go gocket.listeners[response.MessageType](conn, response.Data)
 	}
-
-
 }
 
-func On (messageType string, callback func(data interface{}, callback func(m string, d interface{}))) {
-	emitter.On(messageType, callback)
+func On(mType string, callback func(c Conn, d interface{})) {
+	gocket.listeners[mType] = callback
+	log.Println("NEW EVENT ATTACHED: ", mType)
 }
 
-func SocketHandler() websocket.Handler {
-	return websocket.Handler(webSocketServer)
+
+func (conn *Conn) Emit(mType string, data interface{}) {
+	log.Println("EMIT EVENT: ", mType)
+	websocket.JSON.Send(conn.ws, WebsocketResponse{
+		MessageType: mType,
+		Data: data,
+	})
 }
+
+func (conn *Conn) EmitFor(room string, mType string, data interface{}) {
+	log.Println("----> EMIT FOR CONN ID", conn.id)
+
+	for _, connection := range gocket.connections {
+		log.Println("------> CONNECTIONS", connection.id)
+		if conn.id != connection.id {
+			go connection.Emit(mType, data)
+		}
+	}
+}
+
+func (conn *Conn) ConnectOnRoom(room string) {
+	conn.rooms = append(conn.rooms, room)
+}
+

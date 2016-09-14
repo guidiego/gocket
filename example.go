@@ -7,15 +7,16 @@ import (
 )
 
 func main() {
-	gocket.On("HU3", func(data interface{}, send func(m string, d interface{})) {
-		send("HU3_RESPONSE", data)
+
+	gocket.On("Connect", func (conn gocket.Conn, data interface{}) {
+		conn.ConnectOnRoom("test")
 	})
 
-	gocket.On("MICHAEL", func(data interface{}, send func(m string, d interface{})) {
-		send("MICHAEL_GAY", data)
+	gocket.On("HU3", func (conn gocket.Conn, data interface{}) {
+		conn.EmitFor("test", "HUE", data)
 	})
 
-	http.Handle("/ws", gocket.SocketHandler())
+	http.Handle("/ws", gocket.Handler())
 
 	log.Fatal(http.ListenAndServe(":8888", nil))
 }
