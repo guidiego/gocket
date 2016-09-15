@@ -12,10 +12,6 @@ func main() {
 		conn.ConnectOnRoom("test")
 	})
 
-	gocket.On("HU3", func (conn gocket.Conn, data interface{}) {
-		conn.EmitFor("test", "HUE", data)
-	})
-
 	http.Handle("/ws", gocket.Handler())
 
 	log.Fatal(http.ListenAndServe(":8888", nil))

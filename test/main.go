@@ -9,7 +9,7 @@ import (
 type Conn struct {
 	id 		string
 	rooms 	[]string
-	ws 		*websocket.Conn
+	ws 		websocket.Conn
 }
 
 type WebsocketResponse struct {
@@ -34,11 +34,12 @@ func Handler() websocket.Handler {
 		var conn = Conn{
 			id: uuid.New(),
 			rooms: []string{"self"},
-			ws: ws,
+			ws: *ws,
 		}
 
 		gocket.listeners["Connect"](conn, nil)
 		gocket.connections = append(gocket.connections, conn)
+		
 		messageReceive(conn)
 	})
 }
@@ -47,7 +48,7 @@ func messageReceive(conn Conn) {
 	var response WebsocketResponse;
 
 	for {
-		err := websocket.JSON.Receive(conn.ws, &response)
+		err := websocket.JSON.Receive(&conn.ws, &response)
 	
 		if err != nil {
 			log.Println("Connection Closed!")
@@ -69,7 +70,7 @@ func On(mType string, callback func(c Conn, d interface{})) {
 
 func (conn *Conn) Emit(mType string, data interface{}) {
 	log.Println("EMIT EVENT: ", mType)
-	websocket.JSON.Send(conn.ws, WebsocketResponse{
+	websocket.JSON.Send(&conn.ws, WebsocketResponse{
 		MessageType: mType,
 		Data: data,
 	})
@@ -79,8 +80,8 @@ func (conn *Conn) EmitFor(room string, mType string, data interface{}) {
 	log.Println("----> EMIT FOR CONN ID", conn.id)
 
 	for _, connection := range gocket.connections {
-		log.Println("------> CONNECTIONS", connection.id)
 		if conn.id != connection.id {
+			log.Println("------> CONNECTIONS", connection.id)
 			go connection.Emit(mType, data)
 		}
 	}
